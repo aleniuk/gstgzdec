@@ -1,5 +1,7 @@
 #include "zip-dec-wrapper.h"
 
+#include "stdlib.h"// calloc, free
+
 #include "bzlib.h"
 #include "zlib.h"
 
@@ -148,7 +150,8 @@ z_dec * z_dec_alloc(z_type type)
     dec->stream_context = calloc(1, sizeof(bz_stream));
     ZCK(dec->stream_context);
     dec->dec_func = decode_bzip2;
-    ret = BZ2_bzDecompressInit (&dec->stream_context, 0, 0);
+    ret = BZ2_bzDecompressInit
+      ((bz_stream *)&dec->stream_context, 0, 0);
     ZCK(ret == BZ_OK);
     break;
 
@@ -157,7 +160,8 @@ z_dec * z_dec_alloc(z_type type)
     ZCK(dec->stream_context);
     dec->dec_func = decode_gzip;
     ret = inflateInit2
-      (&dec->stream_context, ZLIB_INFLATE_WINDOW_BITS);
+      ((z_stream *)&dec->stream_context,
+       ZLIB_INFLATE_WINDOW_BITS);
     ZCK(ret == Z_OK);
     break;
 
@@ -197,3 +201,14 @@ int z_dec_decode(z_dec * dec,
 }
 
 
+#ifdef TEST
+
+#include "stdlib.h"
+
+int main(int argc, char ** argv)
+{
+
+
+}
+
+#endif
