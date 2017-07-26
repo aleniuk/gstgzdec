@@ -86,7 +86,7 @@ G_DEFINE_TYPE (GstGzdec, GstGzdec, GST_TYPE_ELEMENT);
 GST_BOILERPLATE (GstGzdec, gst_gzdec, GstElement, GST_TYPE_ELEMENT);
 #endif
 
-const unsigned DEFAULT_BUFFER_SIZE = 4 * 1024;
+const unsigned DEFAULT_BUFFER_SIZE = 4 * 1024 * 1024;
 
 enum
 {
