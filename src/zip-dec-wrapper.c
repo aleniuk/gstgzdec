@@ -213,7 +213,11 @@ int z_dec_decode(z_dec * dec,
 // ./a.out infile.gz outfile type
 // type : 1 == bz
 //        2 == gz
-
+//
+// check:
+// bzip2 -k zip-dec-wrapper.c
+// ./a.out zip-dec-wrapper.c.bz2 test.c 1
+// cmp test.c zip-dec-wrapper.c
 
 #include "stdlib.h"
 #include "stdio.h"
@@ -229,7 +233,7 @@ int main(int argc, char ** argv)
     char
       * inbuf = NULL,
       * outbuf = NULL;
-    int
+    unsigned
       avail_in = 0,
       avail_out = 0;
     const unsigned
@@ -265,8 +269,9 @@ int main(int argc, char ** argv)
 
 	  // write all we have
 	  if (avail_out) {
-	    int written = fwrite(outbuf, 1, segsize - avail_out, out);
-	    if (written != (segsize - avail_out)) {
+	    const unsigned bytes_to_write = segsize - avail_out; 
+	    int written = fwrite(outbuf, 1, bytes_to_write, out);
+	    if (written != (bytes_to_write)) {
 	      err = -1;
 	      goto finish;
 	    }
