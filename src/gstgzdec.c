@@ -43,8 +43,6 @@
 #endif
 #include "gstgzdec.h"
 
-//#include "gst/base/gsttypefindhelper.h"
-
 #include "zip-dec-wrapper.h"
 #include "string.h"
 
@@ -123,9 +121,7 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 
     /* Create the output buffer */
     flow = gst_pad_alloc_buffer (b->src, b->offset,
-				 /*b->offset ? */
-				 b->buffer_size
-				 /*: b->first_buffer_size*/,
+				 b->buffer_size,
 				 GST_PAD_CAPS (b->src), &out);
 
     if (flow != GST_FLOW_OK) {
@@ -160,15 +156,15 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
     
     if (bytes_to_write) {
     
-      if (avail_out >= GST_BUFFER_SIZE (out)) {
+      if (bytes_to_write >= GST_BUFFER_SIZE (out)) {
 	gst_buffer_unref (out);
 	break;
       }
       GST_BUFFER_SIZE (out) = bytes_to_write;
-      // GST_BUFFER_OFFSET (out) = b->stream.total_out_lo32 - GST_BUFFER_SIZE (out);
+      GST_BUFFER_OFFSET (out) = b->offset;//stream.total_out_lo32 - GST_BUFFER_SIZE (out);
 
       /* Push data */
-      b->offset += GST_BUFFER_SIZE (out);
+      b->offset += GST_BUFFER_SIZE (out); // offset grows. that's BAD
       flow = gst_pad_push (b->src, out);
       if (flow != GST_FLOW_OK)
 	break;
