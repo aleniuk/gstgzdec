@@ -265,8 +265,8 @@ int main(int argc, char ** argv)
 
 	  // write all we have
 	  if (avail_out) {
-	    int written = fwrite(outbuf, 1, avail_out, out);
-	    if (written != avail_out) {
+	    int written = fwrite(outbuf, 1, segsize - avail_out, out);
+	    if (written != (segsize - avail_out)) {
 	      err = -1;
 	      goto finish;
 	    }
