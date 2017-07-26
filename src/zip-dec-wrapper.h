@@ -1,3 +1,8 @@
+
+
+#ifndef __ZIPWRAP
+#define __ZIPWRAP
+
 typedef enum {
   Z_UNNOWN = 0,
   Z_BZIP2,
@@ -14,3 +19,4 @@ int z_dec_decode
  void * next_in, unsigned * avail_in,
  void * next_out, unsigned * avail_out);
 
+#endif // __ZIPWRAP
