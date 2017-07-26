@@ -127,6 +127,9 @@ void z_dec_free(z_dec ** dec_p)
 	case Z_GZIP:
 	  inflateEnd((z_stream *)&dec->stream_context);
 	  break;
+	default:
+	  // or clang compiler warns
+	  break;
 	}
 	free(dec->stream_context);
 	dec->stream_context = NULL;
@@ -203,12 +206,85 @@ int z_dec_decode(z_dec * dec,
 
 #ifdef TEST
 
+// compile:
+// clang zip-dec-wrapper.c -DTEST $(pkg-config --libs zlib) -lbz2
+//
+// run:
+// ./a.out infile.gz outfile type
+// type : 1 == bz
+//        2 == gz
+
+
 #include "stdlib.h"
+#include "stdio.h"
 
 int main(int argc, char ** argv)
 {
+  int err = -1;
+  if (argc > 3) {
 
+    FILE
+      * in = NULL,
+      * out = NULL;
+    char
+      * inbuf = NULL,
+      * outbuf = NULL;
+    unsigned
+      avail_in = 0,
+      avail_out = 0;
+    const unsigned
+      segsize = 1024 * 32;
+    z_dec * dec = NULL;
 
+    dec = z_dec_alloc(atoi(argv[3]));
+    in = fopen(argv[1], "rb");
+    out = fopen(argv[2], "wb");
+    inbuf = malloc(segsize);
+    outbuf = malloc(segsize);
+
+    if (in && out && inbuf && outbuf) {
+      for (;;) {
+
+	avail_in = fread(inbuf, 1, segsize, in);
+
+	// decode all we have
+	while (avail_in) {
+
+	  const unsigned offset = segsize - avail_in;
+
+	  avail_out = segsize; // set output buffer size
+	  err = z_dec_decode
+	    (dec, inbuf + offset, &avail_in,
+	     outbuf, &avail_out);
+	  if (err)
+	    goto finish;
+
+	  // write all we have
+	  if (avail_out) {
+	    int written = fwrite(outbuf, 1, avail_out, out);
+	    if (written != avail_out) {
+	      err = -1;
+	      goto finish;
+	    }
+	    avail_out = 0;
+	  }
+	}
+	
+      }
+    }
+
+  finish:
+    if (inbuf)
+      free(inbuf);
+    if (outbuf)
+      free(outbuf);
+    if (in)
+      fclose(in);
+    if (out)
+      fclose(out);
+  }
+
+  return err;
 }
 
 #endif
