@@ -1,23 +1,24 @@
 dnl required version of autoconf
 AC_PREREQ([2.53])
 
-dnl TODO: fill in your package name and package version here
-AC_INIT([gstgzdec],[0.10.0])
-
-dnl AM_INIT_AUTOMAKE([foreign])
-
-dnl required versions of gstreamer and plugins-base
-GST_REQUIRED=0.10.16
-GSTPB_REQUIRED=0.10.16
-
-dnl GST_REQUIRED=1.0
-dnl GSTPB_REQUIRED=1.0
+AC_INIT([gstgzdec],[0.0.0])
 
 AC_CONFIG_SRCDIR([src/gstgzdec.c])
 AC_CONFIG_HEADERS([config.h])
 
 dnl required version of automake
 AM_INIT_AUTOMAKE([1.10])
+
+dnl arg --enable-version-1
+AC_ARG_ENABLE([enable-version-1], "builds with gstreamer-1.x API", [
+	GST_REQUIRED=1.0
+	GSTPB_REQUIRED=1.0
+	GST_POSTFIX=1.0
+] , [
+	GST_POSTFIX=0.10
+	GST_REQUIRED=0.10.16
+	GSTPB_REQUIRED=0.10.16
+])
 
 dnl enable mainainer mode by default
 AM_MAINTAINER_MODE([enable])
@@ -48,9 +49,9 @@ dnl for libgstrtp-0.10: gstreamer-rtp-0.10 >= $GST_REQUIRED
 dnl for libgstrtsp-0.10: gstreamer-rtsp-0.10 >= $GST_REQUIRED
 dnl etc.
 PKG_CHECK_MODULES(GST, [
-  gstreamer-0.10 >= $GST_REQUIRED
-  gstreamer-base-0.10 >= $GST_REQUIRED
-  gstreamer-controller-0.10 >= $GST_REQUIRED
+  gstreamer-$GST_POSTFIX >= $GST_REQUIRED
+  gstreamer-base-$GST_POSTFIX >= $GST_REQUIRED
+  gstreamer-controller-$GST_POSTFIX >= $GST_REQUIRED
 ], [
   AC_SUBST(GST_CFLAGS)
   AC_SUBST(GST_LIBS)
@@ -64,15 +65,7 @@ PKG_CHECK_MODULES(GST, [
   ])
 ])
 
-dnl translit(dnm, m, l) AM_CONDITIONAL(USE_BZ2, true)
-
-dnl AM_LDFLAGS=
-
-dnl AM_CHECK_LIB(BZ, BZ2_bzCompress, BZ_LIBS="-lbz2", AC_MSG_ERROR([no bzip-dev found]))
-dnl AM_CHECK_LIB(z, inflate, ZLIBZ+="-lz")
-
-
-PKG_CHECK_MODULES(ZL, zlib >= 0.0, [
+PKG_CHECK_MODULES(ZL, zlib >= 1.0, [
   AC_SUBST(ZL_CFLAGS)
   AC_SUBST(ZL_LIBS)
 ], AC_MSG_ERROR([no zlib found]))

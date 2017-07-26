@@ -31,7 +31,6 @@
  * ]|
  * </refsect2>
  */
-//#define GST_10 1
 
 
 #ifdef HAVE_CONFIG_H
@@ -274,6 +273,16 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
   GstStateChangeReturn ret;
 
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
+
+  switch (transition) {
+    case GST_STATE_CHANGE_PAUSED_TO_READY:
+      // so we could start again
+      z_dec_free(&b->dec);
+      break;
+    default:
+      break;
+  }
+  
   return ret;
 }
 
@@ -322,5 +331,5 @@ plugin_init (GstPlugin * p)
 }
 
 GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, "gzdec",
-    "Compress or decompress streams",
+    "Decompress bz2 and gz streams",
     plugin_init, "0.0", "LGPL", "gzdec", "gz")
