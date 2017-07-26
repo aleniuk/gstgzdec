@@ -246,8 +246,6 @@ int main(int argc, char ** argv)
     inbuf = malloc(segsize);
     outbuf = malloc(segsize);
 
-    fseek(in, 0, SEEK_SET);
-
     if (dec && in && out && inbuf && outbuf) {
       for (;;) {
 	int last_read_size =
@@ -267,9 +265,11 @@ int main(int argc, char ** argv)
 	  if (err)
 	    goto finish;
 
+	  const unsigned bytes_to_write = segsize - avail_out; 
+
 	  // write all we have
-	  if (avail_out) {
-	    const unsigned bytes_to_write = segsize - avail_out; 
+	  if (bytes_to_write) {
+
 	    int written = fwrite(outbuf, 1, bytes_to_write, out);
 	    if (written != (bytes_to_write)) {
 	      err = -1;
