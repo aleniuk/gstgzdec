@@ -25,17 +25,13 @@
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gzip -k file
  * gst-launch -v filesrc location=file.gz ! gzdec ! filesink location=file2
- * cmp file2 file
  *
- * bzip2 -k file
  * gst-launch -v filesrc location=file.bz ! gzdec ! filesink location=file2
- * cmp file2 file
- *
  * ]|
  * </refsect2>
  */
+//#define GST_10 1
 
 
 #ifdef HAVE_CONFIG_H
@@ -50,7 +46,12 @@ GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 #define GST_CAT_DEFAULT gzdec_debug
 
 // GST_STATIC_CAPS("application/unknown")
-/*"application/x-bzip"*/
+// how about
+// "application/x-bzip"
+// "application/gzip"
+
+
+// how about zip stream ?
 
 static GstStaticPadTemplate sink_template =
 GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
@@ -68,7 +69,7 @@ struct _GstGzdec
 
   guint buffer_size;
 
-  guint64 offset;
+  guint64 offset; // it's ok for files, but what about endless stream?
 
   z_dec * dec;
 };
@@ -80,17 +81,16 @@ struct _GstGzdecClass
 
 #ifdef GST_10
 #define gst_gzdec_parent_class parent_class
-G_DEFINE_TYPE (GstGzdec, gst_gzdec, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE (GstGzdec, GstGzdec, GST_TYPE_ELEMENT);
 #else
 GST_BOILERPLATE (GstGzdec, gst_gzdec, GstElement, GST_TYPE_ELEMENT);
 #endif
 
-#define DEFAULT_BUFFER_SIZE 1024
+const unsigned DEFAULT_BUFFER_SIZE = 4 * 1024;
 
 enum
 {
   PROP_0,
-  PROP_FIRST_BUFFER_SIZE,
   PROP_BUFFER_SIZE
 };
 
@@ -98,7 +98,7 @@ enum
 static GstFlowReturn
 gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 {
-  GstFlowReturn flow;
+  GstFlowReturn flow = GST_FLOW_OK;
   GstBuffer *out;
   GstGzdec *b;
   int r = 0;
@@ -115,10 +115,12 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
   avail_in = GST_BUFFER_SIZE (in);
 
   while (avail_in) {
-    //    guint n;
     guint allocated_out_buffer_size;
     guint bytes_to_write;
 
+    // ret = gst_buffer_pool_acquire_buffer (dvdec->pool, &outbuf, NULL);
+
+    
     /* Create the output buffer */
     flow = gst_pad_alloc_buffer (b->src, b->offset,
 				 b->buffer_size,
@@ -160,8 +162,12 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 	gst_buffer_unref (out);
 	break;
       }
+#ifdef GST_10
+      gst_buffer_resize (out, 0, bytes_to_write);
+#else
       GST_BUFFER_SIZE (out) = bytes_to_write;
-      GST_BUFFER_OFFSET (out) = b->offset;//stream.total_out_lo32 - GST_BUFFER_SIZE (out);
+#endif
+      GST_BUFFER_OFFSET (out) = b->offset;
 
       /* Push data */
       b->offset += GST_BUFFER_SIZE (out); // offset grows. that's BAD
@@ -268,16 +274,6 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
   GstStateChangeReturn ret;
 
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
-  if (ret != GST_STATE_CHANGE_SUCCESS)
-    return ret;
-
-  switch (transition) {
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
-      z_dec_free(&b->dec);
-      break;
-    default:
-      break;
-  }
   return ret;
 }
 
