@@ -122,10 +122,10 @@ void z_dec_free(z_dec ** dec_p)
 	// so, we can be sure here
 	switch (dec->type) {
 	case Z_BZIP2:
-	  BZ2_bzDecompressEnd((bz_stream *)&dec->stream_context);
+	  BZ2_bzDecompressEnd((bz_stream *)dec->stream_context);
 	  break;
 	case Z_GZIP:
-	  inflateEnd((z_stream *)&dec->stream_context);
+	  inflateEnd((z_stream *)dec->stream_context);
 	  break;
 	default:
 	  // or clang compiler warns
@@ -154,7 +154,7 @@ z_dec * z_dec_alloc(z_type type)
     ZCK(dec->stream_context);
     dec->dec_func = decode_bzip2;
     ret = BZ2_bzDecompressInit
-      ((bz_stream *)&dec->stream_context, 0, 0);
+      ((bz_stream *)dec->stream_context, 0, 0);
     ZCK(ret == BZ_OK);
     break;
 
@@ -163,7 +163,7 @@ z_dec * z_dec_alloc(z_type type)
     ZCK(dec->stream_context);
     dec->dec_func = decode_gzip;
     ret = inflateInit2
-      ((z_stream *)&dec->stream_context,
+      ((z_stream *)dec->stream_context,
        ZLIB_INFLATE_WINDOW_BITS);
     ZCK(ret == Z_OK);
     break;
@@ -229,11 +229,11 @@ int main(int argc, char ** argv)
     char
       * inbuf = NULL,
       * outbuf = NULL;
-    unsigned
+    int
       avail_in = 0,
       avail_out = 0;
     const unsigned
-      segsize = 1024 * 32;
+      segsize = 1024 * 1024;
     z_dec * dec = NULL;
 
     dec = z_dec_alloc(atoi(argv[3]));
@@ -242,15 +242,19 @@ int main(int argc, char ** argv)
     inbuf = malloc(segsize);
     outbuf = malloc(segsize);
 
-    if (in && out && inbuf && outbuf) {
+    fseek(in, 0, SEEK_SET);
+
+    if (dec && in && out && inbuf && outbuf) {
       for (;;) {
-
-	avail_in = fread(inbuf, 1, segsize, in);
-
+	int last_read_size =
+	avail_in = fread(inbuf, 1, 1024, in);
+	if (avail_in <= 0)
+	  goto finish;
+	
 	// decode all we have
 	while (avail_in) {
 
-	  const unsigned offset = segsize - avail_in;
+	  const unsigned offset = last_read_size - avail_in;
 
 	  avail_out = segsize; // set output buffer size
 	  err = z_dec_decode
@@ -282,6 +286,8 @@ int main(int argc, char ** argv)
       fclose(in);
     if (out)
       fclose(out);
+    if (dec)
+      z_dec_free(&dec);
   }
 
   return err;
