@@ -1,4 +1,4 @@
-/* GStreamer bz2 decoder
+/* GStreamer gz/bz2 decoder
  * Copyright (C) 2006 Lutz Müller <lutz topfrose de>
  * Copyright (C) 2017 Aleksandr Slobodeniuk
  *
@@ -20,12 +20,19 @@
 /**
  * SECTION:element-gstgzdec
  *
- * The gsty4mdec element decodes uncompressed video in YUV4MPEG format.
+ * The gstgzdec element decodes gz and bz compressed streams
  *
  * <refsect2>
  * <title>Example launch line</title>
  * |[
- * gst-launch -v filesrc location=file.y4m ! y4mdec ! xvimagesink
+ * gzip -k file
+ * gst-launch -v filesrc location=file.gz ! gzdec ! filesink location=file2
+ * cmp file2 file
+ *
+ * bzip2 -k file
+ * gst-launch -v filesrc location=file.bz ! gzdec ! filesink location=file2
+ * cmp file2 file
+ *
  * ]|
  * </refsect2>
  */
@@ -44,9 +51,12 @@
 GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 #define GST_CAT_DEFAULT gzdec_debug
 
+// GST_STATIC_CAPS("application/unknown")
+/*"application/x-bzip"*/
+
 static GstStaticPadTemplate sink_template =
 GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS ("ANY"/*"application/x-bzip"*/));
+    GST_STATIC_CAPS_ANY);
 static GstStaticPadTemplate src_template =
 GST_STATIC_PAD_TEMPLATE ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
     GST_STATIC_CAPS_ANY);
@@ -58,11 +68,8 @@ struct _GstGzdec
   GstPad *sink;
   GstPad *src;
 
-  /* Properties */
-  guint first_buffer_size;
   guint buffer_size;
 
-  gboolean ready;
   guint64 offset;
 
   z_dec * dec;
@@ -80,7 +87,6 @@ G_DEFINE_TYPE (GstGzdec, gst_gzdec, GST_TYPE_ELEMENT);
 GST_BOILERPLATE (GstGzdec, gst_gzdec, GstElement, GST_TYPE_ELEMENT);
 #endif
 
-#define DEFAULT_FIRST_BUFFER_SIZE 1024
 #define DEFAULT_BUFFER_SIZE 1024
 
 enum
@@ -107,19 +113,20 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
   
   b = GST_GZDEC (GST_PAD_PARENT (pad));
 
-  if (!b->ready)
-    goto not_ready;
-
   next_in = (char *) GST_BUFFER_DATA (in);
   avail_in = GST_BUFFER_SIZE (in);
 
-  do {
-    guint n;
+  while (avail_in) {
+    //    guint n;
+    guint allocated_out_buffer_size;
+    guint bytes_to_write;
 
     /* Create the output buffer */
     flow = gst_pad_alloc_buffer (b->src, b->offset,
-        b->offset ? b->buffer_size : b->first_buffer_size,
-        GST_PAD_CAPS (b->src), &out);
+				 /*b->offset ? */
+				 b->buffer_size
+				 /*: b->first_buffer_size*/,
+				 GST_PAD_CAPS (b->src), &out);
 
     if (flow != GST_FLOW_OK) {
       GST_DEBUG_OBJECT (b, "pad alloc failed: %s", gst_flow_get_name (flow));
@@ -129,44 +136,44 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 
     /* Decode */
     next_out = (char *) GST_BUFFER_DATA (out);
-    avail_out = GST_BUFFER_SIZE (out);
+    allocated_out_buffer_size =
+      avail_out = GST_BUFFER_SIZE (out);
+
+    // if we're feeding the first buffer,
+    // probe stream type and initialize decoder
+    if (!b->dec) {
+      if (avail_out < 2)
+	goto fail;
+      z_type zip_stream_type = probe_stream(next_in);
+      b->dec = z_dec_alloc(zip_stream_type);
+      if (!b->dec)
+	goto fail;
+    }
     
     r = z_dec_decode
       (b->dec, next_in, &avail_in, next_out, &avail_out);
     if (r)
-      goto decode_failed;
+      goto fail;
 
-    if (avail_out >= GST_BUFFER_SIZE (out)) {
-      gst_buffer_unref (out);
-      break;
-    }
-    GST_BUFFER_SIZE (out) -= avail_out;
-    // GST_BUFFER_OFFSET (out) = b->stream.total_out_lo32 - GST_BUFFER_SIZE (out);
+    bytes_to_write = allocated_out_buffer_size - avail_out;
 
-    /* Configure source pad (if necessary) */
-    if (!b->offset) {
-      GstCaps *caps = NULL;
-
-      //caps = gst_type_find_helper_for_buffer (GST_OBJECT (b), out, NULL);
-      if (caps) {
-#ifndef GST_10
-        gst_buffer_set_caps (out, caps);
-#endif
-        gst_pad_set_caps (b->src, caps);
-        gst_pad_use_fixed_caps (b->src);
-        gst_caps_unref (caps);
-      } else {
-        /* FIXME: shouldn't we queue output buffers until we have a type? */
+    
+    if (bytes_to_write) {
+    
+      if (avail_out >= GST_BUFFER_SIZE (out)) {
+	gst_buffer_unref (out);
+	break;
       }
-    }
+      GST_BUFFER_SIZE (out) = bytes_to_write;
+      // GST_BUFFER_OFFSET (out) = b->stream.total_out_lo32 - GST_BUFFER_SIZE (out);
 
-    /* Push data */
-    n = GST_BUFFER_SIZE (out); // gst_buffer_get_size
-    flow = gst_pad_push (b->src, out);
-    if (flow != GST_FLOW_OK)
-      break;
-    b->offset += n;
-  } while (avail_out);
+      /* Push data */
+      b->offset += GST_BUFFER_SIZE (out);
+      flow = gst_pad_push (b->src, out);
+      if (flow != GST_FLOW_OK)
+	break;
+    }
+  }
 
 done:
 #ifdef GST_10
@@ -175,20 +182,13 @@ done:
   gst_buffer_unref (in);
   return flow;
 
-/* ERRORS */
-decode_failed:
+fail:
   {
     GST_ELEMENT_ERROR (b, STREAM, DECODE, (NULL),
-        ("Failed to decompress data (error code %i).", r));
+        ("Decompression failed"));
     z_dec_free(&b->dec);
     gst_buffer_unref (out);
     flow = GST_FLOW_ERROR;
-    goto done;
-  }
-not_ready:
-  {
-    GST_ELEMENT_ERROR (b, LIBRARY, FAILED, (NULL), ("Decompressor not ready."));
-    flow = GST_FLOW_WRONG_STATE;
     goto done;
   }
 }
@@ -196,7 +196,6 @@ not_ready:
 static void
 gst_gzdec_init (GstGzdec * b, GstGzdecClass * klass)
 {
-  b->first_buffer_size = DEFAULT_FIRST_BUFFER_SIZE;
   b->buffer_size = DEFAULT_BUFFER_SIZE;
 
   b->sink = gst_pad_new_from_static_template
@@ -246,9 +245,6 @@ gst_gzdec_get_property (GObject * object, guint prop_id,
     case PROP_BUFFER_SIZE:
       g_value_set_uint (value, b->buffer_size);
       break;
-    case PROP_FIRST_BUFFER_SIZE:
-      g_value_set_uint (value, b->first_buffer_size);
-      break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
   }
@@ -263,9 +259,6 @@ gst_gzdec_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_BUFFER_SIZE:
       b->buffer_size = g_value_get_uint (value);
-      break;
-    case PROP_FIRST_BUFFER_SIZE:
-      b->first_buffer_size = g_value_get_uint (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -284,7 +277,7 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
 
   switch (transition) {
     case GST_STATE_CHANGE_PAUSED_TO_READY:
-      //gst_gzdec_decompress_init (b);
+      z_dec_free(&b->dec);
       break;
     default:
       break;
@@ -304,17 +297,6 @@ gst_gzdec_class_init (GstGzdecClass * klass)
   gobject_class->finalize = gst_gzdec_finalize;
   gobject_class->get_property = gst_gzdec_get_property;
   gobject_class->set_property = gst_gzdec_set_property;
-
-  g_object_class_install_property
-    (G_OBJECT_CLASS (klass),
-      PROP_FIRST_BUFFER_SIZE,
-     g_param_spec_uint
-     ("first-buffer-size",
-      "Size of first buffer",
-      "Size of first buffer (used to determine the "
-          "mime type of the uncompressed data)", 1, G_MAXUINT,
-      DEFAULT_FIRST_BUFFER_SIZE,
-      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
   
   g_object_class_install_property
     (G_OBJECT_CLASS (klass), PROP_BUFFER_SIZE,

@@ -7,6 +7,7 @@
 
 static const int ZLIB_INFLATE_WINDOW_BITS = 32;
 
+
 struct z_decoder_s
 {
   z_type type;
@@ -14,7 +15,7 @@ struct z_decoder_s
 
   int (* dec_func)
   (void * stream_context,
-   void * next_in, unsigned * avail_in,
+   const void * next_in, unsigned * avail_in,
    void * next_out, unsigned * avail_out);
 };
 
@@ -28,9 +29,25 @@ struct z_decoder_s
 #define NON_API static
 
 
+z_type probe_stream
+(const unsigned short * generic_stream) {
+  ZCK(generic_stream);
+
+#define bzip_magic (0x42 | (0x5a << 8)) // RFC ??
+#define gzip_magic (0x78 | (0x9c << 8)) // RFC ??
+
+  switch (*generic_stream) {
+  case bzip_magic:  return Z_BZIP2;
+  case gzip_magic:  return Z_GZIP;
+  }
+ error:
+  return Z_UNKNOWN;
+}
+
+
 NON_API int decode_gzip
 (void * ctx,
- void * next_in, unsigned * avail_in,
+ const void * next_in, unsigned * avail_in,
  void * next_out, unsigned * avail_out)
 {
   z_stream * z_ctx;
@@ -44,7 +61,7 @@ NON_API int decode_gzip
 
   z_ctx = (z_stream *)ctx;
 
-  z_ctx->next_in = next_in;
+  z_ctx->next_in = (void *)next_in;
   z_ctx->avail_in = *avail_in;
 
   z_ctx->next_out = next_out;
@@ -58,19 +75,15 @@ NON_API int decode_gzip
     *avail_in = z_ctx->avail_in;
     *avail_out = z_ctx->avail_out;
 
-    if (ret == Z_STREAM_END)
-      return 0;
-    else
-      return 0;
+    return 0;
   }
-  
  error:
   return -1;
 }
 
 NON_API int decode_bzip2
 (void * ctx,
- void * next_in, unsigned * avail_in,
+ const void * next_in, unsigned * avail_in,
  void * next_out, unsigned * avail_out)
 {
   bz_stream * bz_ctx;
@@ -84,7 +97,7 @@ NON_API int decode_bzip2
 
   bz_ctx = (bz_stream *)ctx;
 
-  bz_ctx->next_in = next_in;
+  bz_ctx->next_in = (void *)next_in;
   bz_ctx->avail_in = *avail_in;
 
   bz_ctx->next_out = next_out;
@@ -97,11 +110,7 @@ NON_API int decode_bzip2
     // update in/out buffer size states
     *avail_in = bz_ctx->avail_in;
     *avail_out = bz_ctx->avail_out;
-
-    if (ret == BZ_STREAM_END)
-      return 0;
-    else
-      return 0;
+    return 0;
   }
  error:
   return -1;
@@ -185,7 +194,7 @@ z_dec * z_dec_alloc(z_type type)
 
 // decode wrapper
 int z_dec_decode(z_dec * dec,
- void * next_in, unsigned * avail_in,
+ const void * next_in, unsigned * avail_in,
  void * next_out, unsigned * avail_out)
 {
   ZCK(dec &&
