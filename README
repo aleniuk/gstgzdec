@@ -1,0 +1,46 @@
+BUILD
+--------
+1) Make sure you have available pkg-configs of
+- gstreamer
+- gstreamer-base
+- gstreamer-controller
+- zlib
+
+2) Make sure you have libbz2 headers and shared library at the
+same path's as zlib's headers and shared library
+
+3) run autogen.sh and make
+
+$ ./autogen.sh --prefix=PATH_TO_BUILD
+
+$ make && make install
+
+This will build plugin for gstreamer-0.10 .
+To build plugin for gstreamer-1.0 , please specify an option:
+
+$ ./autogen.sh --enable-version-1 --prefix=PATH_TO_BUILD
+
+also:
+--
+If you're rebuilding from one version of gstreamer to another,
+please first make some cleanups (on my system "make install" installs to old --prefix without it):
+
+$ make clean
+$ git clean -f
+--
+
+TESTING
+-------
+Plugin and wrapper for zlib/libbz2 have it's own separate automated tests.
+They're running using shell scripts.
+
+$ cat src/test-wrapper.sh | less
+$ cat src/test-plugin.sh | less
+
+To run first you need edit script: specify some directory with files, that it will use for tests:
+- compress them
+- decompress them with wrapper/plugin
+- check the result file is the same as source file with "cmp"
+
+And also for plugin test specify version of gstreamer, and
+installed "--prefix"
