@@ -10,7 +10,7 @@ dnl required version of automake
 AM_INIT_AUTOMAKE([1.10])
 
 dnl arg --enable-version-1
-AC_ARG_ENABLE([enable-version-1], "builds with gstreamer-1.x API", [
+AC_ARG_ENABLE([version-1], "builds with gstreamer-1.x API", [
 	GST_REQUIRED=1.0
 	GSTPB_REQUIRED=1.0
 	GST_POSTFIX=1.0
@@ -59,8 +59,8 @@ PKG_CHECK_MODULES(GST, [
   AC_MSG_ERROR([
       You need to install or upgrade the GStreamer development
       packages on your system. On debian-based systems these are
-      libgstreamer0.10-dev and libgstreamer-plugins-base0.10-dev.
-      on RPM-based systems gstreamer0.10-devel, libgstreamer0.10-devel
+      libgstreamer$GST_POSTFIX-dev and libgstreamer-plugins-base$GST_POSTFIX-dev.
+      on RPM-based systems gstreamer$GST_POSTFIX-devel, libgstreamer$GST_POSTFIX-devel
       or similar. The minimum version required is $GST_REQUIRED.
   ])
 ])
