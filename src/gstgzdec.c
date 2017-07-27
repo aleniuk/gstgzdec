@@ -68,8 +68,6 @@ struct _GstGzdec
 
   guint buffer_size;
 
-  guint64 offset; // it's ok for files, but what about endless stream?
-
   z_dec * dec;
 };
 
@@ -117,11 +115,10 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
     guint allocated_out_buffer_size;
     guint bytes_to_write;
 
-    // ret = gst_buffer_pool_acquire_buffer (dvdec->pool, &outbuf, NULL);
-
-    
     /* Create the output buffer */
-    flow = gst_pad_alloc_buffer (b->src, b->offset,
+    // this is what we're going to fix next
+    flow = gst_pad_alloc_buffer (b->src,
+				 GST_BUFFER_OFFSET_NONE,
 				 b->buffer_size,
 				 GST_PAD_CAPS (b->src), &out);
 
@@ -162,14 +159,12 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 	break;
       }
 #ifdef GST_10
-      gst_buffer_resize (out, 0, bytes_to_write);
+      gst_buffer_resize (out, GST_BUFFER_OFFSET_NONE, bytes_to_write);
 #else
       GST_BUFFER_SIZE (out) = bytes_to_write;
 #endif
-      GST_BUFFER_OFFSET (out) = b->offset;
 
       /* Push data */
-      b->offset += GST_BUFFER_SIZE (out); // offset grows. that's BAD
       flow = gst_pad_push (b->src, out);
       if (flow != GST_FLOW_OK)
 	break;
@@ -211,7 +206,6 @@ gst_gzdec_init (GstGzdec * b, GstGzdecClass * klass)
   gst_pad_use_fixed_caps (b->src);
 
   b->dec = NULL;
-  b->offset = 0;  
 }
 
 static void
