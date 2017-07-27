@@ -101,6 +101,14 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
   int r = 0;
   unsigned avail_in, avail_out;
   gpointer next_in, next_out;
+
+  // defining our 'error check lambda'
+#define GZDEC_ERR(code, message) do {				\
+  GST_ELEMENT_ERROR (b, STREAM, code, (NULL), (message));	\
+  flow = GST_FLOW_ERROR;					\
+  goto done; } while(0)
+	
+
   
 #ifdef GST_10
   GstMapInfo map = GST_MAP_INFO_INIT, omap;
@@ -108,7 +116,7 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
   
   b = GST_GZDEC (GST_PAD_PARENT (pad));
 
-  next_in = (char *) GST_BUFFER_DATA (in);
+  next_in = (gchar *) GST_BUFFER_DATA (in);
   avail_in = GST_BUFFER_SIZE (in);
 
   while (avail_in) {
@@ -117,19 +125,30 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 
     /* Create the output buffer */
     // this is what we're going to fix next
+    // ------------------------------------
+    // We'll have a ringbuffer of buffers, that
+    // allows us to allocate N buffers once,
+    // and keep parallelism in the pipeline possible,
+    // counterawise to having one reffed buffer.
+    // ------------------------------------
+    // This buffer is not reffered, and this is bad too:
+    // we 'reallocate' it at each step.
     flow = gst_pad_alloc_buffer (b->src,
 				 GST_BUFFER_OFFSET_NONE,
 				 b->buffer_size,
 				 GST_PAD_CAPS (b->src), &out);
 
     if (flow != GST_FLOW_OK) {
-      GST_DEBUG_OBJECT (b, "pad alloc failed: %s", gst_flow_get_name (flow));
-      z_dec_free(&b->dec);
-      break;
+      // it doesn't mean an error or what?
+      GST_DEBUG_OBJECT
+	(b, "pad buffer allocation failed: %s",
+	 gst_flow_get_name (flow));
+      //z_dec_free(&b->dec); // should we ?
+      goto done;
     }
 
     /* Decode */
-    next_out = (char *) GST_BUFFER_DATA (out);
+    next_out = (gchar *) GST_BUFFER_DATA (out);
     allocated_out_buffer_size =
       avail_out = GST_BUFFER_SIZE (out);
 
@@ -137,35 +156,46 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
     // probe stream type and initialize decoder
     if (!b->dec) {
       if (avail_out < 2)
-	goto fail;
-      z_type zip_stream_type = probe_stream(next_in);
+	GZDEC_ERR
+	  (FAILED, "The first provided buffer's size is > 0 and < 2 bytes "
+	   "at the same time. Decoder can't probe the stream and initialize"
+	   "in this case.");
+
+      const z_type zip_stream_type = probe_stream(next_in);
       b->dec = z_dec_alloc(zip_stream_type);
-      if (!b->dec)
-	goto fail;
+      if (!b->dec) {
+	switch (zip_stream_type) {
+	case Z_UNNOWN:
+	  GZDEC_ERR(CODEC_NOT_FOUND, "this is neither bz2 or gz stream");
+	default:
+	  GZDEC_ERR(FAILED, "Decoder's initialization returned an error");
+	}
+      }
     }
     
     r = z_dec_decode
       (b->dec, next_in, &avail_in, next_out, &avail_out);
-    if (r)
-      goto fail;
+    if (r) {
+      z_dec_free(&b->dec);	    
+      GZDEC_ERR(DECODE, "");
+    }
 
     bytes_to_write = allocated_out_buffer_size - avail_out;
 
-    
     if (bytes_to_write) {
-    
-      if (bytes_to_write >= GST_BUFFER_SIZE (out)) {
-	gst_buffer_unref (out);
-	break;
-      }
+
 #ifdef GST_10
+      // out map's size changing?
       gst_buffer_resize (out, GST_BUFFER_OFFSET_NONE, bytes_to_write);
 #else
       GST_BUFFER_SIZE (out) = bytes_to_write;
 #endif
 
-      /* Push data */
-      flow = gst_pad_push (b->src, out);
+      // Pushing data downstream.
+      // 1. Increasing it's refcount, so downstream element could safely unref it.
+      // 2. Pushing buffer to the pad.
+      out = gst_buffer_ref(out); // 1.
+      flow = gst_pad_push (b->src, out); // 2.
       if (flow != GST_FLOW_OK)
 	break;
     }
@@ -175,18 +205,9 @@ done:
 #ifdef GST_10
   gst_buffer_unmap (in, &map);
 #endif
+  gst_buffer_unref(out);
   gst_buffer_unref (in);
   return flow;
-
-fail:
-  {
-    GST_ELEMENT_ERROR (b, STREAM, DECODE, (NULL),
-        ("Decompression failed"));
-    z_dec_free(&b->dec);
-    gst_buffer_unref (out);
-    flow = GST_FLOW_ERROR;
-    goto done;
-  }
 }
 
 static void
