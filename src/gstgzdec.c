@@ -113,7 +113,8 @@ gst_gzdec_chain (GstPad * pad,
 
     // get sets from the input buffer
 #ifdef GST_1_0
-    GstMapInfo in_map = GST_MAP_INFO_INIT, out_map;
+    GstMapInfo in_map = GST_MAP_INFO_INIT,
+                        out_map = GST_MAP_INFO_INIT;
     gst_buffer_map (in_buf, &in_map, GST_MAP_READ);
     next_in = (gchar *)in_map.data;
     avail_in = in_map.size;
@@ -128,6 +129,14 @@ gst_gzdec_chain (GstPad * pad,
         guint bytes_to_write;
 
         // Getting the output buffer.
+        // No, I don't think it is a good solution,
+        // to allocate buffer on each step.
+        // I tried to figure out, how other plugins
+        // manage their output buffers, but found only
+        // 'stream-specific' instruments, like buffer_pool.
+        // I would make ring of buffers, but Gstreamer's documentation
+        // warns about gst_buffer_ref because it may cause unnecessary memcpys.
+        // After all, I had to get get things work in a short time..
 #ifdef GST_1_0
         out_buf = gst_buffer_new_and_alloc (gz->buffer_size);
         if (!out_buf)
@@ -180,7 +189,7 @@ gst_gzdec_chain (GstPad * pad,
         gst_buffer_unmap (out_buf, &out_map);
 #endif
         if (r) {
-            z_dec_free(&gz->dec);	    
+            z_dec_free(&gz->dec);
             GZDEC_ERR(DECODE, "decoding failed");
         }
 
