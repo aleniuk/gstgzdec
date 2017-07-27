@@ -1,14 +1,14 @@
 #!/bin/sh
 
 PREFIX=$HOME/GNOME/src-new/build
-TEST_DATA_DIR=$HOME/GNOME/tst-data
+TEST_DATA_DIR=$HOME/GNOME/nikon
 
 CC=gcc
 CFLAGS="-O0 -g -DTEST"
 
 #env vars
 export PKG_CONFIG_PATH=$PREFIX/lib/pkgconfig
-ZFLAGS="-static $(pkg-config --cflags --libs zlib) -lbz2"
+ZFLAGS="$(pkg-config --cflags --libs zlib) -lbz2"
 
 #build
 echo compiling zip-dec-wrapper
