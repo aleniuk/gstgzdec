@@ -1,9 +1,10 @@
 #!/bin/sh
 
+GST_VERSION=0.10
 PREFIX=$HOME/GNOME/src-new/build-0.1
 TEST_DATA_DIR=$HOME/GNOME/nikon
 
-LAUNCH="valgrind -q gst-launch-0.10"
+LAUNCH="valgrind -q gst-launch-$GST_VERSION"
 
 export LD_LIBRARY_PATH=$PREFIX/lib
 

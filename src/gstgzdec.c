@@ -37,7 +37,9 @@
 #include "zip-dec-wrapper.h"
 #include "string.h"
 
+#if GST_VERSION_MAJOR >= 1
 #define GST_10 1
+#endif
 
 GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 #define GST_CAT_DEFAULT gzdec_debug
@@ -118,7 +120,7 @@ gst_gzdec_chain (GstPad * pad,
   next_in = (gchar *)map.data;
   avail_in = map.size;
 #else
-  next_in = (zgchar *) GST_BUFFER_DATA (in);
+  next_in = (gchar *) GST_BUFFER_DATA (in);
   avail_in = GST_BUFFER_SIZE (in);
 #endif
   
@@ -359,11 +361,13 @@ plugin_init (GstPlugin * p)
   return TRUE;
 }
 
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR,
-		   #ifdef GST_10
-		   gzdec,
-		   #else
-		   "gzdec",
-		   #endif
+GST_PLUGIN_DEFINE
+(GST_VERSION_MAJOR, GST_VERSION_MINOR,
+#ifdef GST_10
+ gzdec,
+#else
+ "gzdec",
+#endif
     "Decompress bz2 and gz streams",
-    plugin_init, "0.0", "GPL", "gzdec", "gz")
+    plugin_init, "0.0", "GPL", "gzdec",
+    "https://github.com/aleniuk/gstgzdec.git")
