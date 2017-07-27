@@ -27,47 +27,41 @@
  * |[
  * gst-launch -v filesrc location=file.gz ! gzdec ! filesink location=file2
  *
- * gst-launch -v filesrc location=file.bz ! gzdec ! filesink location=file2
+ * gst-launch -v filesrc location=file.bz2 ! gzdec ! filesink location=file2
  * ]|
  * </refsect2>
  */
-
-
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 #include "gstgzdec.h"
-
 #include "zip-dec-wrapper.h"
 #include "string.h"
+
+#define GST_10 1
 
 GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 #define GST_CAT_DEFAULT gzdec_debug
 
-// GST_STATIC_CAPS("application/unknown")
 // how about
 // "application/x-bzip"
 // "application/gzip"
 
-
-// how about zip stream ?
-
 static GstStaticPadTemplate sink_template =
-GST_STATIC_PAD_TEMPLATE ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS_ANY);
+GST_STATIC_PAD_TEMPLATE
+  ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
+   GST_STATIC_CAPS_ANY);
 static GstStaticPadTemplate src_template =
-GST_STATIC_PAD_TEMPLATE ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
-    GST_STATIC_CAPS_ANY);
+GST_STATIC_PAD_TEMPLATE
+  ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
+   GST_STATIC_CAPS_ANY);
 
 struct _GstGzdec
 {
   GstElement parent;
-
-  GstPad *sink;
-  GstPad *src;
-
+  GstPad *sinkpad;
+  GstPad *srcpad;
   guint buffer_size;
-
   z_dec * dec;
 };
 
@@ -78,7 +72,7 @@ struct _GstGzdecClass
 
 #ifdef GST_10
 #define gst_gzdec_parent_class parent_class
-G_DEFINE_TYPE (GstGzdec, GstGzdec, GST_TYPE_ELEMENT);
+G_DEFINE_TYPE (GstGzdec, gst_gzdec, GST_TYPE_ELEMENT);
 #else
 GST_BOILERPLATE (GstGzdec, gst_gzdec, GstElement, GST_TYPE_ELEMENT);
 #endif
@@ -93,20 +87,24 @@ enum
 
 
 static GstFlowReturn
-gst_gzdec_chain (GstPad * pad, GstBuffer * in)
+gst_gzdec_chain (GstPad * pad,
+#ifdef GST_10
+		 GstObject * parent,
+#endif
+		 GstBuffer * in)
 {
   GstFlowReturn flow = GST_FLOW_OK;
-  GstBuffer *out;
+  GstBuffer *out = NULL;
   GstGzdec *b;
   int r = 0;
   unsigned avail_in, avail_out;
-  gpointer next_in, next_out;
+  gchar * next_in, *next_out;
 
   // defining our 'error check lambda'
 #define GZDEC_ERR(code, message) do {				\
-  GST_ELEMENT_ERROR (b, STREAM, code, (NULL), (message));	\
-  flow = GST_FLOW_ERROR;					\
-  goto done; } while(0)
+    GST_ELEMENT_ERROR (b, STREAM, code, (NULL), (message));	\
+    flow = GST_FLOW_ERROR;					\
+    goto done; } while(0)
 	
 
   
@@ -116,57 +114,64 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
   
   b = GST_GZDEC (GST_PAD_PARENT (pad));
 
-  next_in = (gchar *) GST_BUFFER_DATA (in);
+#ifdef GST_10
+  gst_buffer_map (in, &map, GST_MAP_READ);
+  next_in = (gchar *)map.data;
+  avail_in = map.size;
+#else
+  next_in = (zgchar *) GST_BUFFER_DATA (in);
   avail_in = GST_BUFFER_SIZE (in);
-
+#endif
+  
   while (avail_in) {
     guint allocated_out_buffer_size;
     guint bytes_to_write;
-
-    /* Create the output buffer */
-    // this is what we're going to fix next
-    // ------------------------------------
-    // We'll have a ringbuffer of buffers, that
-    // allows us to allocate N buffers once,
-    // and keep parallelism in the pipeline possible,
-    // counterawise to having one reffed buffer.
-    // ------------------------------------
-    // This buffer is not reffered, and this is bad too:
-    // we 'reallocate' it at each step.
-    flow = gst_pad_alloc_buffer (b->src,
-				 GST_BUFFER_OFFSET_NONE,
-				 b->buffer_size,
-				 GST_PAD_CAPS (b->src), &out);
+#ifdef GST_10
+    out = gst_buffer_new_and_alloc (b->buffer_size);
+    if (!out)
+      GZDEC_ERR(FAILED, "Buffer allocation failed");
+#else
+    flow = gst_pad_alloc_buffer
+      (b->srcpad, GST_BUFFER_OFFSET_NONE,
+       b->buffer_size, GST_PAD_CAPS (b->srcpad), &out);
 
     if (flow != GST_FLOW_OK) {
-      // it doesn't mean an error or what?
+      z_dec_free(&b->dec);
       GST_DEBUG_OBJECT
 	(b, "pad buffer allocation failed: %s",
 	 gst_flow_get_name (flow));
-      //z_dec_free(&b->dec); // should we ?
       goto done;
     }
+#endif
 
     /* Decode */
+#ifdef GST_10
+    gst_buffer_map (out, &omap, GST_MAP_WRITE);
+    next_out = (gchar *)omap.data;
+    avail_out = omap.size;
+#else
     next_out = (gchar *) GST_BUFFER_DATA (out);
-    allocated_out_buffer_size =
-      avail_out = GST_BUFFER_SIZE (out);
-
+    avail_out = GST_BUFFER_SIZE (out);
+#endif
+    allocated_out_buffer_size = avail_out;
+      
     // if we're feeding the first buffer,
     // probe stream type and initialize decoder
     if (!b->dec) {
       if (avail_out < 2)
 	GZDEC_ERR
-	  (FAILED, "The first provided buffer's size is > 0 and < 2 bytes "
-	   "at the same time. Decoder can't probe the stream and initialize"
+	  (FAILED, "The first provided buffer's size "
+	   "is > 0 and < 2 bytes at the same time."
+	   "Decoder can't probe the stream and initialize"
 	   "in this case.");
 
-      const z_type zip_stream_type = probe_stream(next_in);
+      const z_type zip_stream_type =
+	probe_stream((const unsigned short *)next_in);
       b->dec = z_dec_alloc(zip_stream_type);
       if (!b->dec) {
 	switch (zip_stream_type) {
 	case Z_UNNOWN:
-	  GZDEC_ERR(CODEC_NOT_FOUND, "this is neither bz2 or gz stream");
+	  GZDEC_ERR(CODEC_NOT_FOUND, "This is neither bz2 or gz stream");
 	default:
 	  GZDEC_ERR(FAILED, "Decoder's initialization returned an error");
 	}
@@ -175,9 +180,12 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
     
     r = z_dec_decode
       (b->dec, next_in, &avail_in, next_out, &avail_out);
+#ifdef GST_10
+    gst_buffer_unmap (out, &omap);
+#endif
     if (r) {
       z_dec_free(&b->dec);	    
-      GZDEC_ERR(DECODE, "");
+      GZDEC_ERR(DECODE, "decoding failed");
     }
 
     bytes_to_write = allocated_out_buffer_size - avail_out;
@@ -186,7 +194,7 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
 
 #ifdef GST_10
       // out map's size changing?
-      gst_buffer_resize (out, GST_BUFFER_OFFSET_NONE, bytes_to_write);
+      gst_buffer_resize (out, 0, bytes_to_write);
 #else
       GST_BUFFER_SIZE (out) = bytes_to_write;
 #endif
@@ -195,7 +203,7 @@ gst_gzdec_chain (GstPad * pad, GstBuffer * in)
       // 1. Increasing it's refcount, so downstream element could safely unref it.
       // 2. Pushing buffer to the pad.
       out = gst_buffer_ref(out); // 1.
-      flow = gst_pad_push (b->src, out); // 2.
+      flow = gst_pad_push (b->srcpad, out); // 2.
       if (flow != GST_FLOW_OK)
 	break;
     }
@@ -205,30 +213,36 @@ done:
 #ifdef GST_10
   gst_buffer_unmap (in, &map);
 #endif
-  gst_buffer_unref(out);
+  if(out)
+    gst_buffer_unref(out);
   gst_buffer_unref (in);
   return flow;
 }
 
 static void
-gst_gzdec_init (GstGzdec * b, GstGzdecClass * klass)
+gst_gzdec_init (GstGzdec * b
+#ifndef GST_10
+		, GstGzdecClass * klass
+#endif
+		)
 {
   b->buffer_size = DEFAULT_BUFFER_SIZE;
 
-  b->sink = gst_pad_new_from_static_template
+  b->sinkpad = gst_pad_new_from_static_template
     (&sink_template, "sink");
   gst_pad_set_chain_function
-    (b->sink, GST_DEBUG_FUNCPTR (gst_gzdec_chain));
-  gst_element_add_pad (GST_ELEMENT (b), b->sink);
+    (b->sinkpad, GST_DEBUG_FUNCPTR (gst_gzdec_chain));
+  gst_element_add_pad (GST_ELEMENT (b), b->sinkpad);
 
-  b->src = gst_pad_new_from_static_template
+  b->srcpad = gst_pad_new_from_static_template
     (&src_template, "src");
-  gst_element_add_pad (GST_ELEMENT (b), b->src);
-  gst_pad_use_fixed_caps (b->src);
+  gst_element_add_pad (GST_ELEMENT (b), b->srcpad);
+  gst_pad_use_fixed_caps (b->srcpad);
 
   b->dec = NULL;
 }
 
+#ifndef GST_10
 static void
 gst_gzdec_base_init (gpointer g_class)
 {
@@ -236,10 +250,11 @@ gst_gzdec_base_init (gpointer g_class)
 
   gst_element_class_add_static_pad_template (ec, &sink_template);
   gst_element_class_add_static_pad_template (ec, &src_template);
-  gst_element_class_set_details_simple (ec, "GZ and GZ decoder",
+  gst_element_class_set_details_simple (ec, "GZ/BZ2 decoder",
       "Codec/Decoder", "Decodes compressed streams",
-      "Aleksandr Slobodeniuk <alenuke at yandex dot ru>");
+      "Aleksandr Slobodeniuk <alenuke@yandex.ru>");
 }
+#endif
 
 static void
 gst_gzdec_finalize (GObject * object)
@@ -327,12 +342,12 @@ gst_gzdec_class_init (GstGzdecClass * klass)
    gst_element_class_add_static_pad_template
      (gstelement_class, &src_template);
    gst_element_class_set_static_metadata
-     (gstelement_class, "GZ decoder",
+     (gstelement_class, "GZ/BZ2 decoder",
        "Codec/Decoder", "Decodes compressed streams",
        "Aleksandr Slobodeniuk");
 #endif
 
-  GST_DEBUG_CATEGORY_INIT (gzdec_debug, "gzdec", 0, "GZ decompressor");
+  GST_DEBUG_CATEGORY_INIT (gzdec_debug, "gzdec", 0, "GZ/BZ2 decompressor");
 }
 
 
@@ -345,6 +360,11 @@ plugin_init (GstPlugin * p)
   return TRUE;
 }
 
-GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR, "gzdec",
+GST_PLUGIN_DEFINE (GST_VERSION_MAJOR, GST_VERSION_MINOR,
+		   #ifdef GST_10
+		   gzdec,
+		   #else
+		   "gzdec",
+		   #endif
     "Decompress bz2 and gz streams",
     plugin_init, "0.0", "LGPL", "gzdec", "gz")
