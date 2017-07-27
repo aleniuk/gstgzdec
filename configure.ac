@@ -54,7 +54,7 @@ PKG_CHECK_MODULES(GST, [
   ])
 ])
 
-PKG_CHECK_MODULES(ZL, zlib >= 1.0, [
+PKG_CHECK_MODULES(ZL, zlib >= 1.2, [
   AC_SUBST(ZL_CFLAGS)
   AC_SUBST(ZL_LIBS)
 ], AC_MSG_ERROR([no zlib found]))

@@ -15,7 +15,7 @@
  *
  *   You should have received a copy of the GNU General Public License
  *   along with gstgzdec.  If not, see <http://www.gnu.org/licenses/>.
-*/
+ */
 /**
  * SECTION:element-gstgzdec
  *
@@ -37,6 +37,7 @@
 #include "zip-dec-wrapper.h"
 #include "string.h"
 
+// detect if headers are from 1.x
 #if GST_VERSION_MAJOR >= 1
 #define GST_10 1
 #endif
@@ -49,11 +50,11 @@ GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 // "application/gzip"
 
 static GstStaticPadTemplate sink_template =
-GST_STATIC_PAD_TEMPLATE
+  GST_STATIC_PAD_TEMPLATE
   ("sink", GST_PAD_SINK, GST_PAD_ALWAYS,
    GST_STATIC_CAPS_ANY);
 static GstStaticPadTemplate src_template =
-GST_STATIC_PAD_TEMPLATE
+  GST_STATIC_PAD_TEMPLATE
   ("src", GST_PAD_SRC, GST_PAD_ALWAYS,
    GST_STATIC_CAPS_ANY);
 
@@ -81,10 +82,10 @@ GST_BOILERPLATE (GstGzdec, gst_gzdec, GstElement, GST_TYPE_ELEMENT);
 const unsigned DEFAULT_BUFFER_SIZE = 4 * 1024 * 1024;
 
 enum
-{
-  PROP_0,
-  PROP_BUFFER_SIZE
-};
+  {
+    PROP_0,
+    PROP_BUFFER_SIZE
+  };
 
 
 static GstFlowReturn
@@ -168,15 +169,11 @@ gst_gzdec_chain (GstPad * pad,
 
       const z_type zip_stream_type =
 	probe_stream((const unsigned short *)next_in);
+      if (zip_stream_type == Z_UNKNOWN)
+	GZDEC_ERR(CODEC_NOT_FOUND, "This is neither bz2 or gz stream");
       b->dec = z_dec_alloc(zip_stream_type);
-      if (!b->dec) {
-	switch (zip_stream_type) {
-	case Z_UNNOWN:
-	  GZDEC_ERR(CODEC_NOT_FOUND, "This is neither bz2 or gz stream");
-	default:
-	  GZDEC_ERR(FAILED, "Decoder's initialization returned an error");
-	}
-      }
+      if (!b->dec)
+	GZDEC_ERR(FAILED, "Decoder's initialization returned an error");
     }
     
     r = z_dec_decode
@@ -210,7 +207,7 @@ gst_gzdec_chain (GstPad * pad,
     }
   }
 
-done:
+ done:
 #ifdef GST_10
   gst_buffer_unmap (in, &map);
 #endif
@@ -252,8 +249,8 @@ gst_gzdec_base_init (gpointer g_class)
   gst_element_class_add_static_pad_template (ec, &sink_template);
   gst_element_class_add_static_pad_template (ec, &src_template);
   gst_element_class_set_details_simple (ec, "GZ/BZ2 decoder",
-      "Codec/Decoder", "Decodes compressed streams",
-      "Aleksandr Slobodeniuk <alenuke@yandex.ru>");
+					"Codec/Decoder", "Decodes compressed streams",
+					"Aleksandr Slobodeniuk <alenuke@yandex.ru>");
 }
 #endif
 
@@ -269,31 +266,31 @@ gst_gzdec_finalize (GObject * object)
 
 static void
 gst_gzdec_get_property (GObject * object, guint prop_id,
-    GValue * value, GParamSpec * pspec)
+			GValue * value, GParamSpec * pspec)
 {
   GstGzdec *b = GST_GZDEC (object);
 
   switch (prop_id) {
-    case PROP_BUFFER_SIZE:
-      g_value_set_uint (value, b->buffer_size);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+  case PROP_BUFFER_SIZE:
+    g_value_set_uint (value, b->buffer_size);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
   }
 }
 
 static void
 gst_gzdec_set_property (GObject * object, guint prop_id,
-    const GValue * value, GParamSpec * pspec)
+			const GValue * value, GParamSpec * pspec)
 {
   GstGzdec *b = GST_GZDEC (object);
 
   switch (prop_id) {
-    case PROP_BUFFER_SIZE:
-      b->buffer_size = g_value_get_uint (value);
-      break;
-    default:
-      G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+  case PROP_BUFFER_SIZE:
+    b->buffer_size = g_value_get_uint (value);
+    break;
+  default:
+    G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
   }
 }
 
@@ -306,12 +303,12 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
   ret = GST_ELEMENT_CLASS (parent_class)->change_state (element, transition);
 
   switch (transition) {
-    case GST_STATE_CHANGE_PAUSED_TO_READY:
-      // so we could start again
-      z_dec_free(&b->dec);
-      break;
-    default:
-      break;
+  case GST_STATE_CHANGE_PAUSED_TO_READY:
+    // so we could start again
+    z_dec_free(&b->dec);
+    break;
+  default:
+    break;
   }
   
   return ret;
@@ -334,18 +331,18 @@ gst_gzdec_class_init (GstGzdecClass * klass)
     (G_OBJECT_CLASS (klass), PROP_BUFFER_SIZE,
      g_param_spec_uint
      ("buffer-size", "Buffer size", "Buffer size",
-          1, G_MAXUINT, DEFAULT_BUFFER_SIZE,
-          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+      1, G_MAXUINT, DEFAULT_BUFFER_SIZE,
+      G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
 
 #ifdef GST_10
   gst_element_class_add_static_pad_template
     (gstelement_class, &sink_template);
-   gst_element_class_add_static_pad_template
-     (gstelement_class, &src_template);
-   gst_element_class_set_static_metadata
-     (gstelement_class, "GZ/BZ2 decoder",
-       "Codec/Decoder", "Decodes compressed streams",
-       "Aleksandr Slobodeniuk");
+  gst_element_class_add_static_pad_template
+    (gstelement_class, &src_template);
+  gst_element_class_set_static_metadata
+    (gstelement_class, "GZ/BZ2 decoder",
+     "Codec/Decoder", "Decodes compressed streams",
+     "Aleksandr Slobodeniuk");
 #endif
 
   GST_DEBUG_CATEGORY_INIT (gzdec_debug, "gzdec", 0, "GZ/BZ2 decompressor");
@@ -368,6 +365,6 @@ GST_PLUGIN_DEFINE
 #else
  "gzdec",
 #endif
-    "Decompress bz2 and gz streams",
-    plugin_init, "0.0", "GPL", "gzdec",
-    "https://github.com/aleniuk/gstgzdec.git")
+ "Decompress bz2 and gz streams",
+ plugin_init, "0.0", "GPL", "gzdec",
+ "https://github.com/aleniuk/gstgzdec.git")

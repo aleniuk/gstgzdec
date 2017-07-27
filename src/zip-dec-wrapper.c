@@ -45,14 +45,14 @@ struct z_decoder_s
 // just for sugar
 #define NON_API static
 
-
 z_type probe_stream
 (const unsigned short * generic_stream) {
   ZCK(generic_stream);
 
-#define bzip_magic (0x42 | (0x5a << 8)) // RFC ??
-#define gzip_magic (0x78 | (0x9c << 8)) // RFC ??
+#define bzip_magic 0x425a // RFC ??
+#define gzip_magic 0x789c // RFC ??
 
+  // endianess ?
   switch (*generic_stream) {
   case bzip_magic:  return Z_BZIP2;
   case gzip_magic:  return Z_GZIP;
@@ -144,7 +144,7 @@ void z_dec_free(z_dec ** dec_p)
       z_dec * dec = *dec_p;
       if (dec->stream_context) {
 
-	// after calloc dec->type == Z_UNKNOWN == 0
+	// after calloc dec->type = 0 = Z_UNKNOWN
 	// so, we can be sure here
 	switch (dec->type) {
 	case Z_BZIP2:
@@ -154,8 +154,7 @@ void z_dec_free(z_dec ** dec_p)
 	  inflateEnd((z_stream *)dec->stream_context);
 	  break;
 	default:
-	  // or clang compiler warns
-	  break;
+	  break;// clang warns
 	}
 	free(dec->stream_context);
 	dec->stream_context = NULL;
@@ -198,8 +197,9 @@ z_dec * z_dec_alloc(z_type type)
     ZCK(0);
   }
 
+  // it is necessary to set type in the end,
+  // or destructor may lead to UB
   dec->type = type;
-
   // sucess
   return dec;
   // fail
