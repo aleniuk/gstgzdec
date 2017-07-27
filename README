@@ -44,3 +44,29 @@ To run first you need edit script: specify some directory with files, that it wi
 
 And also for plugin test specify version of gstreamer, and
 installed "--prefix"
+
+
+EXAMPLE
+--------
+I do it like that:
+$ git clone https://github.com/aleniuk/gstgzdec.git
+$ cd gstgzdec
+$ export MY_PREF=$HOME/GNOME
+$ export LD_LIBRARY_PATH=$MY_PREF/lib
+$ export PKG_CONFIG_PATH=$LD_LIBRARY_PATH/pkgconfig
+
+# the next one is if you have gstreamer and glib installed to $MY_PREF
+$ export PATH=$PATH:$MY_PREF/bin
+
+$ ./autogen.sh --prefix=$MY_PREF
+$ make
+$ make install
+$ cd src
+
+# modify test scripts for gstreamer version and path for data, that will be used in tests
+# also maybe you don't have valgrind installed, then remove it from script.
+
+(sorry, didn't have time for sed and the data path in configure.ac)
+(I shoild make it create some garbage in special data path)
+
+$ ./test-plugin.sh
