@@ -3,6 +3,8 @@
 PREFIX=$HOME/GNOME/src-new/build-0.1
 TEST_DATA_DIR=$HOME/GNOME/nikon
 
+LAUNCH="valgrind -q gst-launch-0.10"
+
 export LD_LIBRARY_PATH=$PREFIX/lib
 
 #test
@@ -15,7 +17,7 @@ do
 	if [ "$?" -eq 0 ]; then
 	    rm test_tmp_file
 	    echo decompressing "$file"...
-	    gst-launch-0.10 filesrc location="$file.bz2" ! gzdec ! filesink location=test_tmp_file
+	    $LAUNCH filesrc location="$file.bz2" ! gzdec ! filesink location=test_tmp_file || exit 2
 	    if [ "$?" -eq 0 ]; then
 		cmp "$file" test_tmp_file
 		if [ "$?" -eq 0 ]; then
@@ -42,7 +44,7 @@ do
 	if [ "$?" -eq 0 ]; then
 	    rm test_tmp_file
 	    echo decompressing "$file"...
-	    gst-launch-0.10 filesrc location="$file.gz" ! gzdec ! filesink location=test_tmp_file
+	    $LAUNCH filesrc location="$file.gz" ! gzdec ! filesink location=test_tmp_file || exit 2
 	    if [ "$?" -eq 0 ]; then
 		cmp "$file" test_tmp_file
 		if [ "$?" -eq 0 ]; then
