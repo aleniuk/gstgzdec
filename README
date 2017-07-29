@@ -53,11 +53,13 @@ $ git clone https://github.com/aleniuk/gstgzdec.git
 $ cd gstgzdec
 $ export MY_PREF=$HOME/GNOME
 $ export LD_LIBRARY_PATH=$MY_PREF/lib
-$ export PKG_CONFIG_PATH=$LD_LIBRARY_PATH/pkgconfig
 
-# the next one is if you have gstreamer and glib installed to $MY_PREF
+# the next two is if you have gstreamer, zlib and libbz2 installed to $MY_PREF
+# (I build the debug versions of them):
+$ export PKG_CONFIG_PATH=$LD_LIBRARY_PATH/pkgconfig
 $ export PATH=$PATH:$MY_PREF/bin
 
+# ok, now let's configure and start the build
 $ ./autogen.sh --prefix=$MY_PREF
 $ make
 $ make install
