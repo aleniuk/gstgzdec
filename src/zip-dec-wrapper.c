@@ -49,14 +49,19 @@ z_type probe_stream
 (const unsigned short * generic_stream) {
   ZCK(generic_stream);
 
-#define bzip_magic 0x425a // RFC ??
-#define gzip_magic 0x789c // RFC ??
-
-  // endianess ?
-  switch (*generic_stream) {
-  case bzip_magic:  return Z_BZIP2;
-  case gzip_magic:  return Z_GZIP;
+  const union {
+      char byte[2];
+      unsigned short num;
   }
+  bzip_magic = { { 0x5a, 0x42 } }, // RFC ??
+  gzip_magic = { { 0x9c, 0x78 } };
+
+  if (bzip_magic.num == *generic_stream)
+      return Z_BZIP2;
+
+  if (gzip_magic.num == *generic_stream)
+      return Z_GZIP;
+  
  error:
   return Z_UNKNOWN;
 }
