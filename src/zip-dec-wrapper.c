@@ -53,7 +53,7 @@ z_type probe_stream
       char byte[2];
       unsigned short num;
   }
-  bzip_magic = { { 0x5a, 0x42 } }, // RFC ??
+  bzip_magic = { { 0x42, 0x5a } }, // RFC ??
   gzip_magic = { { 0x9c, 0x78 } };
 
   if (bzip_magic.num == *generic_stream)
