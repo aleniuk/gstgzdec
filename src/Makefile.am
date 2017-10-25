@@ -11,4 +11,4 @@ libgstgzdec_la_LDFLAGS = $(GST_PLUGIN_LDFLAGS)
 libgstgzdec_la_LIBTOOLFLAGS = --tag=disable-static
 
 # headers we need but don't want installed
-noinst_HEADERS = gstgzdec.h zip-dec-wrapper.h
+noinst_HEADERS = zip-dec-wrapper.h

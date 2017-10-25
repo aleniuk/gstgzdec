@@ -117,6 +117,7 @@ gst_gzdec_chain (GstPad * pad,
     int r = 0;
     unsigned avail_in, avail_out;
     gchar *next_in, *next_out;
+    gboolean buffer_pushed;
 
     // defining our 'error check lambda'
 #define GZDEC_ERR(code, message) do {                                   \
@@ -167,6 +168,7 @@ gst_gzdec_chain (GstPad * pad,
             goto done;
         }
 #endif
+        buffer_pushed = FALSE;
 
         /* Decode */
 #ifdef GST_1_0
@@ -235,6 +237,7 @@ gst_gzdec_chain (GstPad * pad,
             
             // Pushing data downstream.
             flow = gst_pad_push (gz->srcpad, out_buf);
+            buffer_pushed = TRUE;
             if (flow != GST_FLOW_OK)
                 break;
         }
@@ -244,9 +247,10 @@ done:
 #ifdef GST_1_0
     gst_buffer_unmap (in_buf, &in_map);
 #endif
-    // if we didn't push the output buffer downstream,
+    // If we didn't push the output buffer downstream,
     // we're the one who should free it.
-    if(out_buf && flow != GST_FLOW_OK)
+    // If we pushed it, it's unreffered by the pad
+    if(out_buf && !buffer_pushed)
         gst_buffer_unref(out_buf);
     gst_buffer_unref (in_buf);
     return flow;
@@ -342,6 +346,7 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
     case GST_STATE_CHANGE_PAUSED_TO_READY:
         // so we could start with clean context
         z_dec_free(&gz->dec);
+        gz->typefind = TRUE;
         break;
     default:
         break;
