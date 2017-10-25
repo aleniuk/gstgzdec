@@ -33,9 +33,7 @@
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
-#include "gstgzdec.h"
 #include "zip-dec-wrapper.h"
-//#include "string.h"
 #include <gst/base/gsttypefindhelper.h>
 
 GType gst_gzdec_get_type (void);
