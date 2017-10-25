@@ -35,7 +35,24 @@
 #endif
 #include "gstgzdec.h"
 #include "zip-dec-wrapper.h"
-#include "string.h"
+//#include "string.h"
+#include <gst/base/gsttypefindhelper.h>
+
+GType gst_gzdec_get_type (void);
+typedef struct _GstGzdec      GstGzdec;
+typedef struct _GstGzdecClass GstGzdecClass;
+
+/* #defines don't like whitespacey bits */
+#define GST_TYPE_GZDEC \
+  (gst_gzdec_get_type())
+#define GST_GZDEC(obj) \
+  (G_TYPE_CHECK_INSTANCE_CAST((obj),GST_TYPE_GZDEC,GstGzdec))
+#define GST_GZDEC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_CAST((klass),GST_TYPE_GZDEC,GstGzdecClass))
+#define GST_IS_GZDEC(obj) \
+  (G_TYPE_CHECK_INSTANCE_TYPE((obj),GST_TYPE_GZDEC))
+#define GST_IS_GZDEC_CLASS(klass) \
+  (G_TYPE_CHECK_CLASS_TYPE((klass),GST_TYPE_GZDEC))
 
 // detect if headers are from 1.x
 #if GST_VERSION_MAJOR >= 1
@@ -45,32 +62,32 @@
 GST_DEBUG_CATEGORY_STATIC (gzdec_debug);
 #define GST_CAT_DEFAULT gzdec_debug
 
-// how about
-// "application/x-bzip"
-// "application/gzip"
-
 static GstStaticPadTemplate sink_template =
-    GST_STATIC_PAD_TEMPLATE("sink", GST_PAD_SINK,
-                            GST_PAD_ALWAYS,
-                            GST_STATIC_CAPS_ANY);
+    GST_STATIC_PAD_TEMPLATE
+    ("sink", GST_PAD_SINK,
+     GST_PAD_ALWAYS,
+     GST_STATIC_CAPS
+     ("application/x-bzip;application/x-gzip"));
+
 static GstStaticPadTemplate src_template =
     GST_STATIC_PAD_TEMPLATE("src", GST_PAD_SRC,
                             GST_PAD_ALWAYS,
                             GST_STATIC_CAPS_ANY);
 
-struct _GstGzdec
+typedef struct _GstGzdec
 {
     GstElement parent;
     GstPad *sinkpad;
     GstPad *srcpad;
     guint buffer_size;
     z_dec *dec;
-};
+    gboolean typefind;
+} _GstGzdec;
 
-struct _GstGzdecClass
+typedef struct _GstGzdecClass
 {
     GstElementClass parent_class;
-};
+} GstGzdecClass;
 
 #ifdef GST_1_0
 #define gst_gzdec_parent_class parent_class
@@ -202,6 +219,22 @@ gst_gzdec_chain (GstPad * pad,
 #else
             GST_BUFFER_SIZE (out_buf) = bytes_to_write;
 #endif
+
+            if (gz->typefind) {
+                GstTypeFindProbability prob;
+                GstCaps *caps;
+                caps =
+                    gst_type_find_helper_for_buffer
+                    (GST_OBJECT (gz), out_buf, &prob);
+              
+              if (caps) {
+                gst_pad_set_caps
+                    (GST_PAD (gz->srcpad), caps);
+                gst_caps_unref (caps);
+              }
+              gz->typefind = FALSE;
+            }
+            
             // Pushing data downstream.
             flow = gst_pad_push (gz->srcpad, out_buf);
             if (flow != GST_FLOW_OK)
@@ -242,6 +275,7 @@ gst_gzdec_init (GstGzdec * gz
     gst_pad_use_fixed_caps (gz->srcpad);
 
     gz->dec = NULL;
+    gz->typefind = TRUE;
 }
 
 #ifndef GST_1_0
@@ -345,7 +379,7 @@ gst_gzdec_class_init (GstGzdecClass * klass)
         (gstelement_class, &src_template);
     gst_element_class_set_static_metadata
         (gstelement_class, "GZ/BZ2 decoder",
-         "Codec/Decoder", "Decodes compressed streams",
+         "Codec/Decoder/Depayloader", "Decodes compressed streams",
          "Aleksandr Slobodeniuk");
 #endif
 
@@ -357,7 +391,7 @@ static gboolean
 plugin_init (GstPlugin * p)
 {
     if (!gst_element_register
-        (p, "gzdec", GST_RANK_NONE, GST_TYPE_GZDEC))
+        (p, "gzdec", GST_RANK_PRIMARY, GST_TYPE_GZDEC))
         return FALSE;
     return TRUE;
 }
