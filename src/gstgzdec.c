@@ -256,6 +256,110 @@ done:
     return flow;
 }
 
+static gboolean gst_gzdec_sink_event
+(GstPad * sinkpad,
+#ifdef GST_1_0
+ GstObject * parent,
+#endif
+ GstEvent * event)
+{
+    gboolean res = TRUE;
+    GstGzdec *gz = //GST_GZDEC(parent);
+#ifdef GST_1_0
+        GST_GZDEC(parent);
+#else
+        (GstGzdec*)gst_pad_get_parent(sinkpad);
+#endif
+
+    GST_DEBUG_OBJECT
+        (gz,
+         "have event type %s: %p on sink pad",
+         GST_EVENT_TYPE_NAME (event), event);
+
+    switch (GST_EVENT_TYPE (event)) {
+    default:
+        res = gst_pad_event_default
+              (sinkpad,
+#ifdef GST_1_0
+               parent,
+#endif
+               event);
+    }
+
+    return res;
+}
+
+
+static gboolean gst_gzdec_src_event
+(GstPad * srcpad,
+#ifdef GST_1_0
+ GstObject * parent,
+#endif
+ GstEvent * event)
+{
+    gboolean res = TRUE;
+    GstGzdec *gz = //GST_GZDEC(parent);
+#ifdef GST_1_0
+        GST_GZDEC(parent);
+#else
+        (GstGzdec*)gst_pad_get_parent(srcpad);
+#endif
+
+    GST_DEBUG_OBJECT
+        (gz,
+         "have event type %s: %p on src pad",
+         GST_EVENT_TYPE_NAME (event), event);
+
+    switch (GST_EVENT_TYPE (event)) {
+    default:
+        res = gst_pad_event_default
+              (srcpad,
+#ifdef GST_1_0
+               parent,
+#endif
+               event);
+        break;
+    }
+    return res;
+}
+
+
+
+static gboolean gst_gzdec_query
+(GstPad * pad,
+#ifdef GST_1_0
+ GstObject * parent,
+#endif
+ GstQuery * query)
+{
+    gboolean res = TRUE;
+    GstGzdec *gz =
+#ifdef GST_1_0
+        GST_GZDEC(parent);
+#else
+        (GstGzdec*)gst_pad_get_parent(pad);
+#endif
+    GST_DEBUG_OBJECT
+        (gz,
+         "have query type %s: %p on src pad",
+         GST_QUERY_TYPE_NAME (query), query);
+
+
+    switch (GST_QUERY_TYPE (query)) {
+    default:
+        res = gst_pad_query_default
+              (pad,
+#ifdef GST_1_0
+               parent,
+#endif
+               query);
+    }
+
+    return res;
+}
+
+
+
 static void
 gst_gzdec_init (GstGzdec * gz
 #ifndef GST_1_0
@@ -265,16 +369,44 @@ gst_gzdec_init (GstGzdec * gz
 {
     gz->buffer_size = DEFAULT_BUFFER_SIZE;
 
-    gz->sinkpad = gst_pad_new_from_static_template
+    // ------------ sinkpad
+    gz->sinkpad =
+        gst_pad_new_from_static_template
                   (&sink_template, "sink");
     gst_pad_set_chain_function
-        (gz->sinkpad, GST_DEBUG_FUNCPTR (gst_gzdec_chain));
-    gst_element_add_pad (GST_ELEMENT (gz), gz->sinkpad);
+        (gz->sinkpad,
+         GST_DEBUG_FUNCPTR (gst_gzdec_chain));
 
-    gz->srcpad = gst_pad_new_from_static_template
+    gst_pad_set_event_function
+        (gz->sinkpad,
+         GST_DEBUG_FUNCPTR
+         (gst_gzdec_sink_event));
+    gst_pad_set_query_function
+        (gz->sinkpad,
+         GST_DEBUG_FUNCPTR
+         (gst_gzdec_query));
+
+    gst_element_add_pad
+        (GST_ELEMENT (gz), gz->sinkpad);
+
+    // ------------ now srcpad
+    gz->srcpad =
+        gst_pad_new_from_static_template
                  (&src_template, "src");
-    gst_element_add_pad (GST_ELEMENT (gz), gz->srcpad);
+
+    gst_pad_set_event_function
+        (gz->srcpad,
+         GST_DEBUG_FUNCPTR
+         (gst_gzdec_src_event));
+    gst_pad_set_query_function
+        (gz->srcpad,
+         GST_DEBUG_FUNCPTR
+         (gst_gzdec_query));
+    
+    gst_element_add_pad
+        (GST_ELEMENT (gz), gz->srcpad);
     gst_pad_use_fixed_caps (gz->srcpad);
+    // -------------------
 
     gz->dec = NULL;
     gz->typefind = TRUE;
