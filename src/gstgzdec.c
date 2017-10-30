@@ -161,6 +161,16 @@ gst_gzdec_chain (GstPad * pad,
         flow = gst_pad_alloc_buffer(gz->srcpad, GST_BUFFER_OFFSET_NONE,
                                     gz->buffer_size, GST_PAD_CAPS (gz->srcpad), &out_buf);
 
+        // typefind case
+        if (flow == GST_FLOW_NOT_LINKED) {
+            flow = GST_FLOW_OK;
+            out_buf =
+                gst_buffer_new_and_alloc
+                (gz->buffer_size);
+            if (!out_buf)
+                flow = GST_FLOW_ERROR;
+        }
+
         if (flow != GST_FLOW_OK) {
             z_dec_free(&gz->dec);
             GST_DEBUG_OBJECT(gz, "pad buffer allocation failed: %s",
