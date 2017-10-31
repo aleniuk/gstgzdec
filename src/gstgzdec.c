@@ -27,6 +27,9 @@
  * gst-launch -v filesrc location=file.gz ! gzdec ! filesink location=file2
  *
  * gst-launch -v filesrc location=file.bz2 ! gzdec ! filesink location=file2
+ *
+ * gst-launch -v playbin uri="file:///home/user/file.jpg.gz"
+ *
  * ]|
  * </refsect2>
  */
@@ -117,7 +120,7 @@ gst_gzdec_chain (GstPad * pad,
     int r = 0;
     unsigned avail_in, avail_out;
     gchar *next_in, *next_out;
-    gboolean buffer_pushed;
+    gboolean buffer_pushed = FALSE;
 
     // defining our 'error check lambda'
 #define GZDEC_ERR(code, message) do {                                   \
