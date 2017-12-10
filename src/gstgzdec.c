@@ -83,6 +83,9 @@ typedef struct _GstGzdec
     guint buffer_size;
     z_dec *dec;
     gboolean typefind;
+#ifdef GST_1_0
+    GstBufferPool *out_buffer_pool;
+#endif
 } _GstGzdec;
 
 typedef struct _GstGzdecClass
@@ -133,7 +136,7 @@ gst_gzdec_chain (GstPad * pad,
     // get sets from the input buffer
 #ifdef GST_1_0
     GstMapInfo in_map = GST_MAP_INFO_INIT,
-                        out_map = GST_MAP_INFO_INIT;
+              out_map = GST_MAP_INFO_INIT;
     gst_buffer_map (in_buf, &in_map, GST_MAP_READ);
     next_in = (gchar *)in_map.data;
     avail_in = in_map.size;
@@ -148,18 +151,89 @@ gst_gzdec_chain (GstPad * pad,
         guint bytes_to_write;
 
         // Getting the output buffer.
-        // No, I don't think it is a good solution,
-        // to allocate buffer on each step.
-        // I tried to figure out, how other plugins
-        // manage their output buffers, but found only
-        // 'stream-specific' instruments, like buffer_pool.
-        // I would make ring of buffers, but Gstreamer's documentation
-        // warns about gst_buffer_ref because it may cause unnecessary memcpys.
-        // After all, I had to get get things work in a short time..
 #ifdef GST_1_0
-        out_buf = gst_buffer_new_and_alloc (gz->buffer_size);
-        if (!out_buf)
-            GZDEC_ERR(FAILED, "Buffer allocation failed");
+
+        // if we didn't negotiate a buffer pool yet,
+        // try to query buffer pool
+        // TODO: what if caps will change?
+        // can they change?
+        // check
+        // gst_pad_check_reconfigure()
+        if (/*!pad->negotiated &&*/
+            !gz->out_buffer_pool)
+        {
+            // figure out if we're linked
+            GstCaps *caps =
+                gst_pad_get_current_caps
+                (GST_PAD (gz->srcpad));
+            if (caps) {
+                guint size, min, max, whole_chunk;
+                GstStructure *config;
+                GstQuery *query =
+                    gst_query_new_allocation
+                        (caps, TRUE);
+                gst_pad_peer_query
+                    (gz->srcpad, query);
+                if (gst_query_get_n_allocation_pools
+                    (query) > 0) {
+                    // we got configuration from
+                    // our peer, parse them
+                    gst_query_parse_nth_allocation_pool
+                        (query, 0, &gz->out_buffer_pool, &size, &min, &max);
+
+                    // We don't want to exceed the amount of size
+                    // downstream element's ready to provide us,
+                    // but we need to keep our own size of buffer.
+                    // So,
+                    whole_chunk = size * max;
+                    max = whole_chunk / gz->buffer_size;
+                    if (max < 2) { // then our own bufferpool
+                        gst_object_unref
+                            (gz->out_buffer_pool);
+                        gz->out_buffer_pool = NULL;
+                        goto then10;
+                    }
+                    size = gz->buffer_size;
+                } else {
+                then10:
+                    size = gz->buffer_size;
+                    min = max = 10; // #why10 :)
+                }
+
+                if (gz->out_buffer_pool == NULL)
+                {
+                    // we did not get a pool,
+                    // make one ourselves then
+                    gz->out_buffer_pool =
+                        gst_buffer_pool_new ();
+                }
+
+                // return vals ??
+                config = gst_buffer_pool_get_config (gz->out_buffer_pool);
+                gst_buffer_pool_config_set_params (config, caps, size, min, max);
+                gst_buffer_pool_set_config (gz->out_buffer_pool, config);
+
+                gst_buffer_pool_set_active (gz->out_buffer_pool, TRUE);
+
+                gst_query_unref (query);
+
+                // feels like something common
+
+            }
+       }
+
+       if (gz->out_buffer_pool) {
+           flow =
+           gst_buffer_pool_acquire_buffer
+           (gz->out_buffer_pool, &out_buf, NULL);
+           if (G_UNLIKELY (flow != GST_FLOW_OK)) // flushing ???
+               GZDEC_ERR(FAILED, "Buffer allocation failed");
+       } else {
+           // if we don't have a downstream
+           // element yet
+           out_buf = gst_buffer_new_and_alloc
+                     (gz->buffer_size);
+       }
 #else
         flow = gst_pad_alloc_buffer(gz->srcpad, GST_BUFFER_OFFSET_NONE,
                                     gz->buffer_size, GST_PAD_CAPS (gz->srcpad), &out_buf);
@@ -233,6 +307,8 @@ gst_gzdec_chain (GstPad * pad,
             GST_BUFFER_SIZE (out_buf) = bytes_to_write;
 #endif
 
+            // TODO: typefind only if not linked.
+            // It's slow and unnecessary in all cases except autoplugging.
             if (gz->typefind) {
                 GstTypeFindProbability prob;
                 GstCaps *caps;
@@ -262,7 +338,7 @@ done:
 #endif
     // If we didn't push the output buffer downstream,
     // we're the one who should free it.
-    // If we pushed it, it's unreffered by the pad
+    // If we pushed it, it's unreffered by the pad.
     if(out_buf && !buffer_pushed)
         gst_buffer_unref(out_buf);
     gst_buffer_unref (in_buf);
@@ -277,7 +353,7 @@ static gboolean gst_gzdec_sink_event
  GstEvent * event)
 {
     gboolean res = TRUE;
-    GstGzdec *gz = //GST_GZDEC(parent);
+    GstGzdec *gz =
 #ifdef GST_1_0
         GST_GZDEC(parent);
 #else
@@ -311,7 +387,7 @@ static gboolean gst_gzdec_src_event
  GstEvent * event)
 {
     gboolean res = TRUE;
-    GstGzdec *gz = //GST_GZDEC(parent);
+    GstGzdec *gz =
 #ifdef GST_1_0
         GST_GZDEC(parent);
 #else
@@ -473,6 +549,15 @@ gst_gzdec_set_property (GObject * object, guint prop_id,
     switch (prop_id) {
     case PROP_BUFFER_SIZE:
         gz->buffer_size = g_value_get_uint (value);
+
+        // reallocate buffer pool
+#ifdef GST_1_0
+        if (gz->out_buffer_pool) {
+            gst_buffer_pool_set_active
+                (gz->out_buffer_pool, FALSE);
+            
+        }
+#endif
         break;
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -492,6 +577,17 @@ gst_gzdec_change_state (GstElement * element, GstStateChange transition)
         // so we could start with clean context
         z_dec_free(&gz->dec);
         gz->typefind = TRUE;
+
+#ifdef GST_1_0
+        // that's really a full refresh
+        if (gz->out_buffer_pool) {
+            gst_buffer_pool_set_active
+                (gz->out_buffer_pool, FALSE);
+            gst_object_unref
+                (gz->out_buffer_pool);
+            gz->out_buffer_pool = NULL;
+        }
+#endif
         break;
     default:
         break;
